@@ -1,0 +1,11 @@
+// Detects potentially stolen session token by searching for new active sessions without authentication challenge by geolocation
+// Needs further filtering - If "password_array" array only contains 1s, trigger an alert since authentication challenge was not observed from specific geolocation.
+
+SigninLogs
+| extend password = parse_json(AuthenticationDetails)[0].authenticationStepResultDetail
+| extend second_factor = parse_json(AuthenticationDetails)[1].authenticationStepResultDetail
+| extend city = parse_json(LocationDetails).city
+| extend session_alive = iff(password contains "satisfied by claim in the token" 
+            and second_factor contains "satisfied by claim in the token", 
+            1, 0)
+| summarize password_array = make_list(session_alive) by tostring(city), Identity

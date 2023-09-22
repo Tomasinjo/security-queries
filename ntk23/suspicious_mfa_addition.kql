@@ -1,0 +1,11 @@
+// Detects active session from more than one unique IP followed by MFA settings change
+
+let MoreThanOneActiveSession =
+SigninLogs
+| summarize unique_IP_addresses=count_distinct(IPAddress) by Identity, bin(TimeGenerated, 1h)
+| where unique_IP_addresses > 1;
+AuditLogs
+| project TimeGenerated, OperationName, ResultDescription, Identity
+| where OperationName == "User registered security info"
+| summarize by Identity, bin(TimeGenerated, 1h)
+| join kind=innerunique MoreThanOneActiveSession on Identity, TimeGenerated
