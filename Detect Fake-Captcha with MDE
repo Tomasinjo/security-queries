@@ -1,0 +1,143 @@
+// Detection name: Potential Fake-Captcha Execution
+// Frequency: Every hour
+// Alert title: Potential Fake-Captcha Execution
+// Severity: High
+// Category: Initial Access
+// MITRE techniques: T1189: Drive-By Compromise
+// Description: Detects pasting from clipboard followed by powershell.exe execution with suspicious command. It identifies explorer.exe process which reads from clipboard and executes powershell shortly after.
+// Recommended actions: Focus on Powershell process - command line and any potential child processes.
+
+let ExplorerProcessName="explorer.exe";
+let PowershellProcessName="powershell.exe";
+let TimeBetweenEvents=20s;  // Max time between pasting and execution
+let SuspCommands=dynamic([
+"iex",
+"DownloadString",
+"DownloadFile",
+"Invoke-WebRequest",
+"iwr ",
+"Invoke-Expression ",
+"Invoke-Command ",
+"-windowstyle h ",
+"-windowstyl h",
+"-windowsty h",
+"-windowst h",
+"-windows h",
+"-windo h",
+"-wind h",
+"-win h",
+"-wi h",
+"-win h ",
+"-win hi ",
+"-win hid ",
+"-win hidd ",
+"-win hidde ",
+"-NoPr ",
+"-NoPro ",
+"-NoProf ",
+"-NoProfi ",
+"-NoProfil ",
+"-nonin ",
+"-nonint ",
+"-noninte ",
+"-noninter ",
+"-nonintera ",
+"-noninterac ",
+"-noninteract ",
+"-noninteracti ",
+"-noninteractiv ",
+"-ec ",
+"-encodedComman ",
+"-encodedComma ",
+"-encodedComm ",
+"-encodedCom ",
+"-encodedCo ",
+"-encodedC ",
+"-encoded ",
+"-encode ",
+"-encod ",
+"-enco ",
+"-en ",
+"-executionpolic ",
+"-executionpoli ",
+"-executionpol ",
+"-executionpo ",
+"-executionp ",
+"-execution bypass",
+"-executio bypass",
+"-executi bypass",
+"-execut bypass",
+"-execu bypass",
+"-exec bypass",
+"-exe bypass",
+"-ex bypass",
+"-ep bypass",
+"/windowstyle h ",
+"/windowstyl h",
+"/windowsty h",
+"/windowst h",
+"/windows h",
+"/windo h",
+"/wind h",
+"/win h",
+"/wi h",
+"/win h ",
+"/win hi ",
+"/win hid ",
+"/win hidd ",
+"/win hidde ",
+"/NoPr ",
+"/NoPro ",
+"/NoProf ",
+"/NoProfi ",
+"/NoProfil ",
+"/nonin ",
+"/nonint ",
+"/noninte ",
+"/noninter ",
+"/nonintera ",
+"/noninterac ",
+"/noninteract ",
+"/noninteracti ",
+"/noninteractiv ",
+"/ec ",
+"/encodedComman ",
+"/encodedComma ",
+"/encodedComm ",
+"/encodedCom ",
+"/encodedCo ",
+"/encodedC ",
+"/encoded ",
+"/encode ",
+"/encod ",
+"/enco ",
+"/en ",
+"/executionpolic ",
+"/executionpoli ",
+"/executionpol ",
+"/executionpo ",
+"/executionp ",
+"/execution bypass",
+"/executio bypass",
+"/executi bypass",
+"/execut bypass",
+"/execu bypass",
+"/exec bypass",
+"/exe bypass",
+"/ex bypass",
+"/ep bypass"
+]);
+let ExcludedCommands=dynamic([]);
+DeviceEvents
+| where ActionType=="GetClipboardData" // Indicates paste action
+| where InitiatingProcessFileName == ExplorerProcessName
+| project ReadClipboard_Timestamp=Timestamp, ReadClipboard_ProcessId=InitiatingProcessUniqueId, ReadClipboard_DeviceId=DeviceId
+| join 
+    (
+    DeviceProcessEvents
+    | where FileName == PowershellProcessName and InitiatingProcessFileName == ExplorerProcessName
+    )
+    on $left.ReadClipboard_ProcessId == $right.InitiatingProcessUniqueId and $left.ReadClipboard_DeviceId == $right.DeviceId // match process creation event where same explorer.exe process that read from clipboard also creates powershell.exe child.
+| where (Timestamp - ReadClipboard_Timestamp) between (0s .. TimeBetweenEvents)  // clipboard paste and powershell execution must happend within specified period
+| where ProcessCommandLine has_any(SuspCommands) and not(ProcessCommandLine has_any (ExcludedCommands))  // executing powershell must also include at least one of suspicious commands and none of the excluded commands
+| project ReadClipboard_Timestamp, Timestamp, ProcessCommandLine, DeviceId, ReportId
